@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>YNCG 废物料库存</title>
+<style>
+  :root{
+    --bg:#0f1115; --card:#1a1d24; --line:#2a2f3a; --txt:#e8eaed; --sub:#9aa3b2;
+    --accent:#3da9fc; --ok:#39d98a; --warn:#ffb454; --bad:#ff6b6b;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{margin:0;background:var(--bg);color:var(--txt);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;}
+  .wrap{max-width:640px;margin:0 auto;padding:16px;}
+  header{display:flex;align-items:center;justify-content:space-between;padding:8px 4px 14px;}
+  header h1{font-size:18px;margin:0;font-weight:600}
+  .lock{background:var(--card);border:1px solid var(--line);color:var(--sub);
+    border-radius:10px;padding:8px 12px;font-size:13px;cursor:pointer}
+  /* 口令层 */
+  #gate{position:fixed;inset:0;background:rgba(8,10,14,.96);display:flex;align-items:center;justify-content:center;z-index:50}
+  #gate .box{width:86%;max-width:340px;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:24px 20px;text-align:center}
+  #gate h2{margin:0 0 6px;font-size:17px}
+  #gate p{margin:0 0 18px;color:var(--sub);font-size:13px}
+  #gate input{width:100%;padding:13px 14px;border-radius:10px;border:1px solid var(--line);
+    background:#0f1115;color:var(--txt);font-size:16px;text-align:center;letter-spacing:2px;margin-bottom:14px}
+  #gate button{width:100%;padding:13px;border:0;border-radius:10px;background:var(--accent);color:#04121f;font-size:16px;font-weight:600;cursor:pointer}
+  #gate .err{color:var(--bad);font-size:13px;min-height:18px;margin-top:8px}
+  /* 详情卡 */
+  .detail{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:26px 20px;text-align:center;margin-top:8px}
+  .detail .name{font-size:22px;font-weight:700;margin-bottom:6px;word-break:break-word}
+  .detail .num{font-size:60px;font-weight:800;line-height:1.05;margin:10px 0 2px;color:var(--ok)}
+  .detail .unit{color:var(--sub);font-size:15px}
+  .detail .meta{color:var(--sub);font-size:12px;margin-top:14px}
+  .detail .back{display:inline-block;margin-top:18px;color:var(--accent);font-size:14px;text-decoration:none}
+  .badge{display:inline-block;padding:3px 9px;border-radius:999px;font-size:12px;border:1px solid var(--line);color:var(--sub)}
+  /* 列表 */
+  .search{width:100%;padding:12px 14px;border-radius:10px;border:1px solid var(--line);background:#0f1115;color:var(--txt);font-size:15px;margin:6px 0 14px}
+  .list{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .item{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;cursor:pointer;text-decoration:none;color:inherit;display:block}
+  .item .n{font-size:14px;font-weight:600;word-break:break-word}
+  .item .v{font-size:18px;font-weight:700;margin-top:6px;color:var(--ok)}
+  .item .v.zero{color:var(--sub)}
+  .msg{padding:16px;color:var(--warn);font-size:14px;line-height:1.6}
+  .refresh{background:var(--card);border:1px solid var(--line);color:var(--sub);border-radius:10px;padding:8px 12px;font-size:13px;cursor:pointer}
+  .bar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:4px}
+</style>
+</head>
+<body>
+<div id="gate">
+  <div class="box">
+    <h2 id="gateTitle">库存查询</h2>
+    <p>请输入查看口令</p>
+    <input id="pw" type="password" inputmode="text" autocomplete="off" placeholder="口令" />
+    <button id="pwBtn">进入</button>
+    <div class="err" id="pwErr"></div>
+  </div>
+</div>
+
+<div class="wrap" id="app" style="display:none">
+  <header>
+    <h1 id="title">YNCG 废物料库存</h1>
+    <span class="lock" id="lockBtn">锁定</span>
+  </header>
+  <div id="content"></div>
+</div>
+
+<script src="config.js"></script>
+<script>
+const C = window.APP_CONFIG || {};
+const PW_KEY = "yncg_pw_v1";
+let CACHE = null; // {map: {alloy: stock}, updated: Date, rows:[{alloy,stock}]}
+
+function getParam(name){ const u=new URLSearchParams(location.search); return u.get(name); }
+
+function showGate(){
+  document.getElementById('gate').style.display='flex';
+  document.getElementById('app').style.display='none';
+  document.getElementById('gateTitle').textContent = C.title || '库存查询';
+  const inp=document.getElementById('pw'); inp.value=''; document.getElementById('pwErr').textContent='';
+  setTimeout(()=>inp.focus(),50);
+}
+function passGate(){
+  const v=document.getElementById('pw').value.trim();
+  if(v===C.viewPassword){ sessionStorage.setItem(PW_KEY,'1'); document.getElementById('gate').style.display='none'; document.getElementById('app').style.display='block'; boot(); }
+  else { document.getElementById('pwErr').textContent='口令错误'; }
+}
+document.getElementById('pwBtn').addEventListener('click',passGate);
+document.getElementById('pw').addEventListener('keydown',e=>{if(e.key==='Enter')passGate();});
+document.getElementById('lockBtn').addEventListener('click',()=>{sessionStorage.removeItem(PW_KEY);showGate();});
+
+function fmt(n){
+  if(n===null||n===undefined||isNaN(n)) return '—';
+  return Number(n).toLocaleString('zh-CN');
+}
+
+// 读取库存数据：优先级 = 二维码自带 ?data= > config.dataUrl（腾讯云 COS 自动同步）> 同源 data.json
+async function loadData(){
+  const sources = [];
+  const qdata = getParam('data');           // 二维码可携带自身数据源，未来换桶免重部署
+  if(qdata) sources.push(qdata);
+  if(C.dataUrl) sources.push(C.dataUrl);
+  sources.push('./data.json');
+  let j=null, used=null;
+  for(const url of sources){
+    try{
+      const r = await fetch(url, {cache:'no-store'});
+      if(!r.ok) throw new Error('HTTP '+r.status);
+      j = await r.json(); used = url; break;
+    }catch(e){ /* 尝试下一个数据源 */ }
+  }
+  if(!j){
+    return {error:'读取库存数据失败：所有数据源均不可用。请确认①config.js 的 dataUrl 正确且桶已开启跨域(CORS) ②或 data.json 已随站点部署。'};
+  }
+  const rows = (j.rows||[]).map(x=>({alloy:String(x.alloy||'').trim(), stock:parseFloat(x.stock)||0}));
+  const map={}; for(const x of rows) map[x.alloy]=parseFloat(x.stock)||0;
+  return {map, rows, updated:new Date(j.updated||Date.now()), sheet:used};
+}
+
+async function boot(){
+  const alloy = getParam('alloy');
+  document.getElementById('title').textContent = C.title || 'YNCG 废物料库存';
+  const content = document.getElementById('content');
+  content.innerHTML = '<div class="msg">读取中…</div>';
+  const data = await loadData();
+  if(data.error){ content.innerHTML = '<div class="msg">⚠️ '+data.error+'</div>'; return; }
+  CACHE = data;
+  if(alloy){ renderDetail(alloy, data); }
+  else { renderList(data); }
+}
+
+function renderDetail(alloy, data){
+  const v = data.map[alloy];
+  const c = document.getElementById('content');
+  if(v===undefined){
+    c.innerHTML = `<div class="detail"><div class="name">${esc(alloy)}</div>
+      <div class="msg">表中未找到该合金。请核对名称，或返回列表。</div>
+      <a class="back" href="./">← 返回列表</a></div>`;
+    return;
+  }
+  const zero = v<=0;
+  c.innerHTML = `<div class="detail">
+    <span class="badge">当前库存</span>
+    <div class="name">${esc(alloy)}</div>
+    <div class="num ${zero?'':''}">${fmt(v)}</div>
+    <div class="unit">${C.unit||'kg'}</div>
+    <div class="meta">数据表：${esc(data.sheet||'')} · 更新于 ${data.updated.toLocaleString('zh-CN')}</div>
+    <a class="back" href="./">← 返回全部合金</a></div>`;
+}
+
+function renderList(data){
+  const c = document.getElementById('content');
+  const items = data.rows.slice().sort((a,b)=>b.stock-a.stock);
+  c.innerHTML = `
+    <div class="bar"><span class="badge">共 ${items.length} 种</span>
+      <button class="refresh" id="rf">刷新</button></div>
+    <input class="search" id="sq" placeholder="搜索合金…" />
+    <div class="list" id="lst"></div>`;
+  const lst = document.getElementById('lst');
+  const draw = (q)=>{
+    const f = (q||'').trim();
+    lst.innerHTML = items.filter(i=>i.alloy.includes(f)).map(i=>
+      `<a class="item" href="?alloy=${encodeURIComponent(i.alloy)}">
+        <div class="n">${esc(i.alloy)}</div>
+        <div class="v ${i.stock<=0?'zero':''}">${fmt(i.stock)}</div></a>`).join('') || '<div class="msg">无匹配</div>';
+  };
+  draw('');
+  document.getElementById('sq').addEventListener('input',e=>draw(e.target.value));
+  document.getElementById('rf').addEventListener('click',async()=>{ const d=await loadData(); if(d.error){alert(d.error);return;} CACHE=d; renderList(d); });
+}
+
+function esc(s){ return (s??'').toString().replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m])); }
+
+// 启动
+if(sessionStorage.getItem(PW_KEY)==='1'){ document.getElementById('gate').style.display='none'; document.getElementById('app').style.display='block'; boot(); }
+else { showGate(); }
+</script>
+</body>
+</html>
