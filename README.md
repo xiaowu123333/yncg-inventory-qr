@@ -1,0 +1,1 @@
+# yncg-inventory-qr
